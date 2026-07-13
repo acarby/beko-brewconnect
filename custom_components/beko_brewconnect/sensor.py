@@ -11,11 +11,33 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .coffee_sdk.models import Drink
 from .coordinator import BrewConnectCoordinator, BrewConnectData
 from .entity import BrewConnectEntity
+
+DRINK_DISPLAY_NAMES: dict[Drink, str] = {
+    Drink.ESPRESSO: "Espresso",
+    Drink.AMERICANO: "Americano",
+    Drink.LUNGO: "Lungo",
+    Drink.CAFFE_LATTE: "Caffe Latte",
+    Drink.LATTE_MACCHIATO: "Latte Macchiato",
+    Drink.RISTRETTO: "Ristretto",
+    Drink.DOPPIO: "Doppio",
+    Drink.ESPRESSO_MACCHIATO: "Espresso Macchiato",
+    Drink.RISTRETTO_BIANCO: "Ristretto Bianco",
+    Drink.FLAT_WHITE: "Flat White",
+    Drink.CORTADO: "Cortado",
+    Drink.ICED_AMERICANO: "Iced Americano",
+    Drink.ICED_LATTE: "Iced Latte",
+    Drink.HOT_WATER: "Hot Water",
+    Drink.HOT_MILK: "Hot Milk",
+    Drink.TRAVEL_MUG: "Travel Mug",
+    Drink.CAPPUCCINO: "Cappuccino",
+}
 
 WORK_STATE_LABELS = {
     "standby": "Standby",
@@ -77,12 +99,46 @@ SENSOR_DESCRIPTIONS: tuple[BrewConnectSensorDescription, ...] = (
 )
 
 
+def _recipe_sensor_descriptions() -> tuple[BrewConnectSensorDescription, ...]:
+    """Water/milk/total ml sensors for every drink's saved recipe.
+
+    Generated per-drink so each shows as its own row on the device page
+    (a button entity's extra_state_attributes are not visible there).
+    Values come live from the device's currently active profile -- see
+    Protocol.md#per-drink-recipe-data.
+    """
+    descriptions = []
+    for drink, display_name in DRINK_DISPLAY_NAMES.items():
+        key_base = drink.value.lower()
+        for field, label, attr in (
+            ("water_ml", "Water", "water_ml"),
+            ("milk_ml", "Milk", "milk_ml"),
+            ("total_ml", "Total", "total_ml"),
+        ):
+            descriptions.append(
+                BrewConnectSensorDescription(
+                    key=f"recipe_{key_base}_{field}",
+                    name=f"{display_name} {label} Volume",
+                    device_class=SensorDeviceClass.VOLUME,
+                    native_unit_of_measurement=UnitOfVolume.MILLILITERS,
+                    value_fn=lambda data, d=drink, a=attr: (
+                        getattr(recipe, a) if (recipe := data.status.recipe_for(d)) else None
+                    ),
+                )
+            )
+    return tuple(descriptions)
+
+
+RECIPE_SENSOR_DESCRIPTIONS: tuple[BrewConnectSensorDescription, ...] = _recipe_sensor_descriptions()
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: BrewConnectCoordinator = entry.runtime_data
     async_add_entities(
-        BrewConnectSensor(coordinator, description) for description in SENSOR_DESCRIPTIONS
+        BrewConnectSensor(coordinator, description)
+        for description in (*SENSOR_DESCRIPTIONS, *RECIPE_SENSOR_DESCRIPTIONS)
     )
 
 
