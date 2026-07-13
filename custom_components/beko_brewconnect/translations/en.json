@@ -1,0 +1,55 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Beko BrewConnect",
+        "description": "Enter your Tuya IoT Platform project credentials and the coffee machine's Device ID.",
+        "data": {
+          "client_id": "Access ID",
+          "client_secret": "Access Secret",
+          "device_id": "Device ID",
+          "region": "Data center region"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Authentication failed. Check your Access ID and Access Secret.",
+      "device_not_found": "Device not found. Check the Device ID and that it's linked to this project.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This device is already configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "work_state": { "name": "State" },
+      "current_drink": { "name": "Current drink" },
+      "drinks_made_total": { "name": "Drinks made" },
+      "last_drink": { "name": "Last drink" },
+      "last_drink_at": { "name": "Last drink at" },
+      "water_hardness": { "name": "Water hardness" },
+      "mode": { "name": "Mode" }
+    },
+    "binary_sensor": {
+      "water_empty": { "name": "Water tank empty" },
+      "bean_container_empty": { "name": "Bean container empty" },
+      "grounds_full": { "name": "Grounds container full" },
+      "front_door_open": { "name": "Front door open" },
+      "needs_attention": { "name": "Needs attention" }
+    },
+    "button": {
+      "espresso": { "name": "Espresso" },
+      "double_espresso": { "name": "Double espresso" },
+      "americano": { "name": "Americano" },
+      "latte": { "name": "Latte" },
+      "flat_white": { "name": "Flat white" },
+      "cappuccino": { "name": "Cappuccino" },
+      "stop": { "name": "Stop" },
+      "rinse": { "name": "Rinse" },
+      "clean": { "name": "Clean" },
+      "clean_milk_cup": { "name": "Clean milk cup" },
+      "descale": { "name": "Descale" }
+    }
+  }
+}
