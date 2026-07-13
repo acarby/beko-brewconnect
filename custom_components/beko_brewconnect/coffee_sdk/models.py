@@ -8,8 +8,12 @@ The DP (data point) schema below was extracted from the Tuya IoT Platform's
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from .recipes import Recipe
 
 
 class Drink(StrEnum):
@@ -108,6 +112,14 @@ def _parse_fault_bitmap(value: int | list[str]) -> frozenset[FaultFlag]:
     return frozenset(FaultFlag(label) for label in value if label in FaultFlag._value2member_map_)
 
 
+# DP codes for the per-color recipe blobs, keyed by the Profile they belong to.
+_PROFILE_DP_CODES: dict[str, Profile] = {
+    "profileorange": Profile.ORANGE,
+    "profileviolet": Profile.VIOLET,
+    "profileblue": Profile.BLUE,
+    "profilegreen": Profile.GREEN,
+}
+
 # The raw DP code -> Python attribute name mapping used when parsing
 # a Tuya `/v1.0/devices/{id}/status` response into a MachineStatus.
 _DP_CODE_MAP: dict[str, str] = {
@@ -157,6 +169,26 @@ class MachineStatus(BaseModel):
     water_hardness: int = 3
     auto_shutoff_timer: AutoShutOffTimer | None = None
     last_profile: Profile | None = None
+    profile_blobs: dict[Profile, str] = Field(default_factory=dict)
+
+    @property
+    def recipes(self) -> dict[Drink, Recipe]:
+        """Per-drink Recipe data (water/milk/strength) for the active profile.
+
+        Empty if the active profile has no saved recipe blob (e.g. guest,
+        or the status response didn't include it).
+        """
+        from .recipes import decode_profile_blob
+
+        if self.last_profile is None:
+            return {}
+        blob = self.profile_blobs.get(self.last_profile)
+        if blob is None:
+            return {}
+        return decode_profile_blob(blob)
+
+    def recipe_for(self, drink: Drink) -> Recipe | None:
+        return self.recipes.get(drink)
 
     @property
     def water_empty(self) -> bool:
@@ -184,9 +216,13 @@ class MachineStatus(BaseModel):
         DPs on firmware updates don't break parsing.
         """
         kwargs: dict = {}
+        profile_blobs: dict[Profile, str] = {}
         raw_by_code = {item["code"]: item["value"] for item in status}
 
         for code, value in raw_by_code.items():
+            if code in _PROFILE_DP_CODES:
+                profile_blobs[_PROFILE_DP_CODES[code]] = value
+                continue
             attr = _DP_CODE_MAP.get(code)
             if attr is None:
                 continue
@@ -211,6 +247,7 @@ class MachineStatus(BaseModel):
             else:
                 kwargs[attr] = value
 
+        kwargs["profile_blobs"] = profile_blobs
         return cls(**kwargs)
 
 

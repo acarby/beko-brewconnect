@@ -113,17 +113,92 @@ booleans above, which only flip once a limit is actually hit.
 
 ### User profiles
 
-Four color-coded profiles plus a guest profile. Profile data
-(`profileorange`/`profileviolet`/`profileblue`/`profilegreen`) is opaque
-binary (`Raw`, 128 bytes max) — not reverse engineered further, since it
-wasn't needed for basic control.
+Four color-coded profiles plus a guest profile.
 
 | Code | Type | Values |
 |---|---|---|
 | `last_profile` | Enum | `guest`, `orange`, `violet`, `blue`, `green` |
-| `profile{color}` | Raw (128B) | Opaque per-profile drink preferences |
-| `{color}_username` | Raw (128B) | Profile display name |
-| `favor` | Raw (128B) | Favorites list, opaque |
+| `profile{color}` | Raw (128B) | Per-profile drink recipes — decoded, see below |
+| `{color}_username` | Raw (128B) | Profile display name — not decoded |
+| `favor` | Raw (128B) | Favorites list — not decoded |
+
+## Per-drink recipe data (`profile{color}`)
+
+Despite the schema declaring `maxlen: 128`, the actual value observed is a
+fixed **51 bytes**, holding the Water/Milk/Strength/Temperature settings
+shown in the app's "Beverage Setting" screen for all 17 drinks at once —
+not just the currently-selected one.
+
+**Decoded via**: editing one slider at a time in the Smart Life app
+("Beverage Setting" → adjust Water Volume/Milk Volume/Coffee
+Strength/Brewing Temperature → Save) while watching the Tuya IoT
+Platform's **Device Logs** tab, then diffing the base64-decoded
+`profile{color}` value before/after each change. No app decompilation
+involved — see [ReverseEngineering.md](ReverseEngineering.md) for the
+general methodology.
+
+### Format
+
+51 bytes = **17 consecutive 3-byte records**, one per drink:
+
+```
+record = [water_ml, strength_byte, milk_ml]
+
+water_ml:      raw byte, 0-255, direct millilitre value
+milk_ml:       raw byte, 0-255, direct millilitre value (0 = no milk drink)
+strength_byte: strength_value + (16 if high_temperature else 0)
+strength_value: 0=Powder, 1=Soft, 2=Standard, 3=Intense
+```
+
+Confirmed by: `water_ml + milk_ml` matches the app's displayed total
+exactly for every drink tested (e.g. Latte Macchiato: `30 + 220 = 250ml`,
+matching the app's "250ml" label), and every single-slider edit produced
+exactly the expected single-byte diff at a consistent offset with no
+other bytes changing (no checksum, no other structure).
+
+### Record index per drink
+
+Determined empirically by diffing each drink's `Selected Beverage` +
+`profile{color}` publish pair in Device Logs:
+
+| Drink | Record # | Byte offset |
+|---|---|---|
+| Americano | 1 | 3 |
+| Lungo | 2 | 6 |
+| CaffeLatte | 3 | 9 |
+| Cappuccino | 4 | 12 |
+| LatteMacchiato | 5 | 15 |
+| Ristretto | 6 | 18 |
+| Doppio | 7 | 21 |
+| EspressoMacchiato | 8 | 24 |
+| RistrettoBianco | 9 | 27 |
+| FlatWhite | 10 | 30 |
+| Cortado | 11 | 33 |
+| Hotwater | 14 | 42 |
+| Hotmilk | 15 | 45 |
+| TravelMug | 16 | 48 |
+
+**Not positionally distinguishable**: Espresso, IcedAmericano, and
+IcedLatte all default to identical values (`30ml water, 0ml milk`), so
+their assignment to the three remaining record slots (0, 12, 13) is a
+best-effort guess in `coffee_sdk/recipes.py`'s `DRINK_RECORD_INDEX`. This
+has no practical effect on the `needs_milk`/ml-display feature, since all
+three correctly report "no milk" and the same volume regardless of which
+exact slot each is assigned — it would only matter if you specifically
+customized one of those three drinks' recipe differently from the others
+and needed to tell them apart, which the current implementation can't do.
+
+`TravelMug` is a partial exception: the app displays "280ml" for it, but
+280 exceeds a single byte's range (max 255) — the stored value (140) is
+almost certainly doubled for display purposes (a travel mug being a
+double-sized serving), not stored as a literal 280.
+
+### `Recipe` in the SDK
+
+`coffee_sdk.recipes.decode_profile_blob()` parses a `profile{color}`
+value into `dict[Drink, Recipe]`. `MachineStatus.recipes` (a property)
+automatically picks the blob matching the device's current
+`last_profile` DP. See [API.md](API.md) for usage.
 
 ## What's not exposed
 
@@ -132,6 +207,6 @@ wasn't needed for basic control.
   [Architecture.md](Architecture.md)).
 - No continuous water/bean fill-level percentage.
 - No maintenance-due advance warning (only "empty now" / "full now").
-- Custom recipe control (exact water/coffee/milk quantities) was not found
-  in this schema — the closest is the fixed `drink_set` enum. Possibly
-  configurable via the opaque `profile{color}` Raw blobs, unexplored.
+- No way to *write* a custom recipe through this SDK yet (reading is
+  fully implemented; writing would mean re-encoding and sending back a
+  modified 51-byte blob, which hasn't been attempted).

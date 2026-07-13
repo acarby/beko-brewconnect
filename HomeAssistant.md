@@ -91,6 +91,54 @@ Espresso, Double espresso, Americano, Latte, Flat white, Cappuccino,
 Stop, and (under the entity's "Configuration" category) Rinse, Clean,
 Clean milk cup, Descale.
 
+Each drink button exposes its **recipe as entity attributes**, read live
+from the machine's own saved settings for the currently active user
+profile (see [Protocol.md](Protocol.md#per-drink-recipe-data) for how
+this is decoded):
+
+```yaml
+water_ml: 60
+milk_ml: 190
+total_ml: 250
+needs_milk: true
+strength: Standard
+high_temperature: false
+```
+
+Since these reflect the **actual saved recipe on the device** (whatever
+you've customized in the official app), they'll change if you edit a
+drink's Water/Milk Volume sliders there — no need to update anything in
+Home Assistant.
+
+## Confirming before brewing a milk drink
+
+Home Assistant button entities don't have a server-side confirmation
+step, but the Lovelace dashboard does — add `confirmation` to the
+button's `tap_action` for any drink where you want a "are you sure the
+milk container is filled?" prompt before it actually fires:
+
+```yaml
+type: button
+entity: button.beko_brewconnect_latte
+name: Latte
+tap_action:
+  action: perform-action
+  perform_action: button.press
+  target:
+    entity_id: button.beko_brewconnect_latte
+  confirmation:
+    text: >
+      This drink uses milk ({{ state_attr('button.beko_brewconnect_latte', 'milk_ml') }}ml).
+      Make sure the milk container is filled and connected.
+```
+
+Since `needs_milk` is a live attribute, you can build this dynamically
+for every milk drink with a template, or generate one card per drink and
+only add the `confirmation` block to the ones where
+`needs_milk: true` — a `{% if %}` template card or a small script that
+regenerates your dashboard config from the entity attributes both work,
+depending on how much you want to automate it versus set up once.
+
 ## Example automation
 
 ```yaml

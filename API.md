@@ -104,6 +104,28 @@ await machine.descale()
 await machine.empty_device()
 ```
 
+### Recipes (ml amounts, milk requirement)
+
+```python
+status = await machine.status()
+recipe = status.recipe_for(Drink.LATTE_MACCHIATO)
+print(recipe.water_ml, recipe.milk_ml, recipe.total_ml)
+print(recipe.needs_milk)   # True if milk_ml > 0
+print(recipe.strength)     # Strength.STANDARD / SOFT / INTENSE / POWDER
+print(recipe.high_temperature)
+
+# or get all 17 at once:
+for drink, recipe in status.recipes.items():
+    ...
+```
+
+`status.recipes` reflects the **currently active user profile**
+(`status.last_profile`) and is read live from the device — it changes if
+you edit a drink's recipe in the official app. See
+[Protocol.md](Protocol.md#per-drink-recipe-data) for how this was
+reverse engineered and its accuracy caveats (three drinks share
+identical defaults and can't be positionally told apart).
+
 ### Sensors
 
 ```python
@@ -127,7 +149,33 @@ Key fields: `power_on`, `work_state`, `faults` (a `frozenset[FaultFlag]`),
 `auto_shutoff_timer`, `last_profile`.
 
 Convenience properties: `.water_empty`, `.bean_container_empty`,
-`.grounds_full`, `.needs_attention` (true if any fault flag is set).
+`.grounds_full`, `.needs_attention` (true if any fault flag is set),
+`.recipes` (`dict[Drink, Recipe]` for the active profile),
+`.recipe_for(drink)`.
+
+### `Recipe` (`coffee_sdk.recipes`)
+
+```python
+@dataclass(frozen=True)
+class Recipe:
+    drink: Drink
+    water_ml: int
+    milk_ml: int
+    strength: Strength
+    high_temperature: bool
+
+    @property
+    def needs_milk(self) -> bool: ...   # milk_ml > 0
+
+    @property
+    def total_ml(self) -> int: ...      # water_ml + milk_ml
+```
+
+`Strength` is a `StrEnum`: `POWDER`, `SOFT`, `STANDARD`, `INTENSE`.
+
+`decode_profile_blob(raw: str | bytes) -> dict[Drink, Recipe]` parses a
+raw `profile{color}` DP value directly, if you need it outside of
+`MachineStatus`.
 
 ### Enums
 

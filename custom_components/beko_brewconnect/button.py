@@ -118,3 +118,26 @@ class BrewConnectButton(BrewConnectEntity, ButtonEntity):
             await self.coordinator.async_record_drink(self.entity_description.drink)
         else:
             await self.coordinator.async_request_refresh()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object] | None:
+        """Recipe info (ml, milk requirement) for drink buttons.
+
+        Sourced from the machine's own saved recipe for the active user
+        profile -- see Protocol.md for how this is decoded. Not available
+        for non-drink buttons (stop/rinse/clean/descale).
+        """
+        drink = self.entity_description.drink
+        if drink is None:
+            return None
+        recipe = self.coordinator.data.status.recipe_for(drink)
+        if recipe is None:
+            return None
+        return {
+            "water_ml": recipe.water_ml,
+            "milk_ml": recipe.milk_ml,
+            "total_ml": recipe.total_ml,
+            "needs_milk": recipe.needs_milk,
+            "strength": recipe.strength.value,
+            "high_temperature": recipe.high_temperature,
+        }
